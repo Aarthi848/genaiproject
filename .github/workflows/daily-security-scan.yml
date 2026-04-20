@@ -1,0 +1,55 @@
+name: Daily-Security-Scan
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # Runs daily at 06:00 UTC
+  workflow_dispatch:        # Allows manual trigger
+
+jobs:
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run npm audit (if package.json exists)
+        run: |
+          if [ -f package.json ]; then
+            npm audit --audit-level=high || true
+          else
+            echo "No package.json found — skipping npm audit."
+          fi
+
+      - name: Run pip audit (if requirements.txt exists)
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install pip-audit && pip-audit -r requirements.txt || true
+          else
+            echo "No requirements.txt found — skipping pip audit."
+          fi
+
+      - name: Scan summary
+        run: |
+          echo "✅ Daily Security Scan completed."
+          echo "Review the Security tab for detailed findings."
